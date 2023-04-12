@@ -5,7 +5,6 @@ import (
 	"log"
 	"net/http"
 	"strconv"
-	"time"
 )
 
 const url = "https://example.com"
@@ -19,19 +18,9 @@ func render(res http.ResponseWriter, Duration string) {
 	fmt.Fprintln(res, `</svg>`)
 }
 
-func benchmark(res http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	_, err := http.Get(url)
-	if err != nil {
-		render(res, "No response")
-	} else {
-		render(res, time.Since(start).String())
-	}
-}
-
 func main() {
+	benchmark()
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", benchmark)
 
 	log.Println("Listening on http://127.0.0.1:" + strconv.Itoa(port))
 	log.Fatal(http.ListenAndServe(":"+strconv.Itoa(port), mux))
