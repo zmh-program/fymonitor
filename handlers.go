@@ -13,36 +13,30 @@ type MonitorData struct {
 	Responses map[string]string `json:"responses"`
 }
 
-func GetMonitorsHandler(c *gin.Context) {
+func GetMonitorHandler(c *gin.Context) {
 	db := c.MustGet("db").(*sql.DB)
 
-	rows, err := db.Query("SELECT url, responses FROM monitor")
+	id := c.Param("id")
+
+	row := db.QueryRow("SELECT url, responses FROM monitor WHERE id = ?", id)
+
+	var url string
+	var responsesJSON string
+	err := row.Scan(&url, &responsesJSON)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	defer rows.Close()
 
-	var monitors []MonitorData
-	for rows.Next() {
-		var url string
-		var responsesJSON string
-		if err := rows.Scan(&url, &responsesJSON); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-
-		// Parse responses JSON
-		var responses MonitorResponses
-		if err := json.Unmarshal([]byte(responsesJSON), &responses); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-
-		monitors = append(monitors, MonitorData{URL: url, Responses: responses})
+	// Parse responses JSON
+	var responses MonitorResponses
+	if err := json.Unmarshal([]byte(responsesJSON), &responses); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
 	}
 
-	c.JSON(http.StatusOK, monitors)
+	monitorData := MonitorData{URL: url, Responses: responses}
+	c.JSON(http.StatusOK, monitorData)
 }
 
 func AddMonitorHandler(c *gin.Context) {

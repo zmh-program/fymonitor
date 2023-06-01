@@ -25,7 +25,7 @@ func main() {
 	})
 
 	// Routes
-	r.GET("/monitor", GetMonitorsHandler)
+	r.GET("/monitor/:id", GetMonitorHandler)
 	r.POST("/monitor", AddMonitorHandler)
 
 	go RunMonitorChecks(db)
