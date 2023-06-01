@@ -2,6 +2,8 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -12,38 +14,70 @@ import (
 )
 
 type MonitorData struct {
-	URL    string `json:"url"`
-	Status string `json:"status"`
+	URL       string            `json:"url"`
+	Responses map[string]string `json:"responses"`
 }
+
+var db *sql.DB
+
+type MonitorResponses map[string]string
 
 func main() {
 	viper.SetConfigName("config")
 	viper.AddConfigPath(".")
 	err := viper.ReadInConfig()
 	if err != nil {
-		log.Fatalf("Error reading config file, %s", err)
+		panic(err)
 	}
 
-	// Establish database connection
-	db, err := sql.Open("mysql", viper.GetString("database.dsn"))
+	db, err = sql.Open("mysql", viper.GetString("database.dsn"))
 	if err != nil {
-		log.Fatal("Error connecting to database: ", err)
+		panic(err)
 	}
 
-	// Create table if it doesn't exist
 	_, err = db.Exec(`
-	CREATE TABLE IF NOT EXISTS monitor (
-		id INT AUTO_INCREMENT PRIMARY KEY,
-		url VARCHAR(256) NOT NULL,
-		status VARCHAR(64) NOT NULL DEFAULT 'unknown',
-		stamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-	)
+		CREATE TABLE IF NOT EXISTS monitor (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			url VARCHAR(256) NOT NULL,
+			responses JSON,
+			stamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
 	`)
 	if err != nil {
-		log.Fatal("Error creating table: ", err)
+		panic(err)
 	}
 
 	r := gin.Default()
+
+	r.GET("/monitor", func(c *gin.Context) {
+		rows, err := db.Query("SELECT url, responses FROM monitor")
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		defer rows.Close()
+
+		var monitors []MonitorData
+		for rows.Next() {
+			var url string
+			var responsesJSON string
+			if err := rows.Scan(&url, &responsesJSON); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+
+			// Parse responses JSON
+			var responses MonitorResponses
+			if err := json.Unmarshal([]byte(responsesJSON), &responses); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+
+			monitors = append(monitors, MonitorData{URL: url, Responses: responses})
+		}
+
+		c.JSON(http.StatusOK, monitors)
+	})
 
 	r.POST("/monitor", func(c *gin.Context) {
 		var newMonitorData MonitorData
@@ -51,54 +85,97 @@ func main() {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		_, err := db.Exec("INSERT INTO monitor (url) VALUES (?)", newMonitorData.URL)
+
+		// Insert new monitor record with empty responses
+		result, err := db.Exec("INSERT INTO monitor (url, responses) VALUES (?, ?)", newMonitorData.URL, "{}")
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		c.Status(http.StatusCreated)
+
+		// Get inserted record ID
+		id, _ := result.LastInsertId()
+
+		c.JSON(http.StatusCreated, gin.H{"id": id})
 	})
 
-	r.PUT("/monitor/:id", func(c *gin.Context) {
-		id := c.Param("id")
-		var updatedMonitorData MonitorData
-		if err := c.ShouldBindJSON(&updatedMonitorData); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-		_, err := db.Exec("UPDATE monitor SET status = ? WHERE id = ?", updatedMonitorData.Status, id)
+	go runMonitorChecks()
+
+	if err := r.Run(":8080"); err != nil {
+		panic(err)
+	}
+}
+
+func runMonitorChecks() {
+	ticker := time.NewTicker(10 * time.Second)
+	for range ticker.C {
+		checkMonitors()
+	}
+}
+
+func checkMonitors() {
+	rows, err := db.Query("SELECT id, url, responses FROM monitor")
+	if err != nil {
+		fmt.Println("Error fetching monitors:", err)
+		return
+	}
+	defer func(rows *sql.Rows) {
+		err := rows.Close()
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			log.Fatal(err)
+		}
+	}(rows)
+
+	for rows.Next() {
+		var id int
+		var url string
+		var responsesJSON string
+		if err := rows.Scan(&id, &url, &responsesJSON); err != nil {
+			fmt.Println("Error scanning monitor:", err)
 			return
 		}
-		c.Status(http.StatusOK)
-	})
 
-	go func() {
-		for range time.Tick(time.Minute) {
-			rows, err := db.Query("SELECT id, url FROM monitor")
-			if err != nil {
-				log.Println("Error querying database: ", err)
-				continue
-			}
-			for rows.Next() {
-				var id int
-				var url string
-				if err := rows.Scan(&id, &url); err != nil {
-					log.Println("Error scanning row: ", err)
-					continue
-				}
-				resp, err := http.Get(url)
-				if err != nil {
-					log.Println("Error checking URL: ", err)
-					db.Exec("UPDATE monitor SET status = ? WHERE id = ?", "down", id)
-					continue
-				}
-				resp.Body.Close()
-				db.Exec("UPDATE monitor SET status = ?, stamp = ? WHERE id = ?", "up", time.Now(), id)
-			}
+		// Parse existing responses
+		var responses MonitorResponses
+		if err := json.Unmarshal([]byte(responsesJSON), &responses); err != nil {
+			responses = make(MonitorResponses)
 		}
-	}()
 
-	r.Run()
+		// Update responses for current hour
+		responses[getCurrentHour()] = performCheck(url)
+
+		// Marshal responses to JSON string
+		resp, err := json.Marshal(responses)
+		if err != nil {
+			fmt.Println("Error marshaling responses:", err)
+			return
+		}
+
+		// Update monitor record with new responses
+		_, _ = db.Exec("UPDATE monitor SET responses = ? WHERE id = ?", resp, id)
+	}
+}
+
+func performCheck(url string) string {
+	start := time.Now()
+
+	resp, err := http.Get(url)
+	if err != nil {
+		fmt.Println("Error performing check:", err)
+		return "-1"
+	}
+	defer resp.Body.Close()
+
+	duration := time.Since(start).Milliseconds()
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return fmt.Sprintf("%dms", duration)
+	}
+
+	return "-1"
+}
+
+func getCurrentHour() string {
+	currentTime := time.Now()
+	return currentTime.Format("15:04")
 }
