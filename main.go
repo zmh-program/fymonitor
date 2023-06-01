@@ -18,6 +18,12 @@ func main() {
 
 	r := gin.Default()
 
+	// Middleware to set up db connection
+	r.Use(func(c *gin.Context) {
+		c.Set("db", db)
+		c.Next()
+	})
+
 	// Routes
 	r.GET("/monitor", GetMonitorsHandler)
 	r.POST("/monitor", AddMonitorHandler)

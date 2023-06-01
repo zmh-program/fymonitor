@@ -53,9 +53,19 @@ func AddMonitorHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
+	// Initialize responses
+	responses := make(MonitorResponses)
+
+	// Marshal responses to JSON string
+	newResponsesJSON, err := json.Marshal(responses)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
 	// Insert new monitor record with empty responses
-	result, err := db.Exec("INSERT INTO monitor (url, responses) VALUES (?, ?)", newMonitorData.URL, "{}")
+	result, err := db.Exec("INSERT INTO monitor (url, responses) VALUES (?, ?)", newMonitorData.URL, newResponsesJSON)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
