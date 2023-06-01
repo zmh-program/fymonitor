@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -24,7 +26,12 @@ func checkMonitors(db *sql.DB) {
 		fmt.Println("Error fetching monitors:", err)
 		return
 	}
-	defer rows.Close()
+	defer func(rows *sql.Rows) {
+		err := rows.Close()
+		if err != nil {
+			log.Fatal(err)
+		}
+	}(rows)
 
 	var wg sync.WaitGroup
 	for rows.Next() {
@@ -46,14 +53,7 @@ func checkMonitors(db *sql.DB) {
 				responses = make(MonitorResponses)
 			}
 
-			// Perform check
-			response := performCheck(url)
-
-			// Get current hour
-			hour := getCurrentHour()
-
-			// Update responses for current hour
-			responses[hour] = response
+			responses[getCurrentHour()] = performCheck(url)
 
 			// Marshal responses to JSON string
 			newResponsesJSON, err := json.Marshal(responses)
@@ -78,7 +78,12 @@ func performCheck(url string) string {
 		fmt.Println("Error performing check:", err)
 		return "-1"
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			log.Fatal(err)
+		}
+	}(resp.Body)
 
 	duration := time.Since(start).Milliseconds()
 
