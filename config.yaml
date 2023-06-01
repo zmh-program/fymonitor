@@ -1,0 +1,6 @@
+database:
+  dsn: root:zmh200904@tcp(127.0.0.1:3306)/monitor
+redis:
+  addr: localhost:6379
+  password:
+  db: 0
