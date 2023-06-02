@@ -13,6 +13,11 @@ import (
 
 type MonitorResponses map[string]string
 
+func getCurrentTime() string {
+	currentTime := time.Now()
+	return currentTime.Format("15:04")
+}
+
 func RunMonitorChecks(db *sql.DB) {
 	ticker := time.NewTicker(1 * time.Hour)
 	for range ticker.C {
@@ -33,41 +38,41 @@ func checkMonitors(db *sql.DB) {
 		}
 	}(rows)
 
-	var wg sync.WaitGroup
+	var group sync.WaitGroup
 	for rows.Next() {
 		var id int
 		var url string
-		var responsesJSON string
-		if err := rows.Scan(&id, &url, &responsesJSON); err != nil {
+		var data string
+		if err := rows.Scan(&id, &url, &data); err != nil {
 			fmt.Println("Error scanning monitor:", err)
 			return
 		}
 
-		wg.Add(1)
-		go func(id int, url string, responsesJSON string) {
-			defer wg.Done()
+		group.Add(1)
+		go func(id int, url string, data string) {
+			defer group.Done()
 
 			// Parse existing responses
-			var responses MonitorResponses
-			if err := json.Unmarshal([]byte(responsesJSON), &responses); err != nil {
-				responses = make(MonitorResponses)
+			var res MonitorResponses
+			if err := json.Unmarshal([]byte(data), &res); err != nil {
+				res = make(MonitorResponses)
 			}
 
-			responses[getCurrentHour()] = performCheck(url)
+			res[getCurrentTime()] = performCheck(url)
 
 			// Marshal responses to JSON string
-			newResponsesJSON, err := json.Marshal(responses)
+			result, err := json.Marshal(res)
 			if err != nil {
 				fmt.Println("Error marshaling responses:", err)
 				return
 			}
 
 			// Update monitor record with new responses
-			_, _ = db.Exec("UPDATE monitor SET responses = ? WHERE id = ?", newResponsesJSON, id)
-		}(id, url, responsesJSON)
+			_, _ = db.Exec("UPDATE monitor SET responses = ? WHERE id = ?", result, id)
+		}(id, url, data)
 	}
 
-	wg.Wait()
+	group.Wait()
 }
 
 func performCheck(url string) string {
@@ -81,7 +86,7 @@ func performCheck(url string) string {
 	defer func(Body io.ReadCloser) {
 		err := Body.Close()
 		if err != nil {
-			log.Fatal(err)
+			log.Fatalln(err)
 		}
 	}(resp.Body)
 
@@ -92,9 +97,4 @@ func performCheck(url string) string {
 	}
 
 	return "-1"
-}
-
-func getCurrentHour() string {
-	currentTime := time.Now()
-	return currentTime.Format("15:04")
 }

@@ -1,8 +1,10 @@
 package main
 
 import (
+	"database/sql"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/viper"
+	"log"
 )
 
 func main() {
@@ -14,23 +16,28 @@ func main() {
 	}
 
 	db := ConnectDatabase()
-	defer db.Close()
+	defer func(db *sql.DB) {
+		err := db.Close()
+		if err != nil {
+			log.Fatalln(err)
+		}
+	}(db)
 
-	r := gin.Default()
+	route := gin.Default()
 
 	// Middleware to set up db connection
-	r.Use(func(c *gin.Context) {
-		c.Set("db", db)
-		c.Next()
+	route.Use(func(ctx *gin.Context) {
+		ctx.Set("db", db)
+		ctx.Next()
 	})
 
 	// Routes
-	r.GET("/monitor/:id", GetMonitorHandler)
-	r.POST("/monitor", AddMonitorHandler)
+	route.GET("/monitor/:id", GetMonitorHandler)
+	route.POST("/monitor", AddMonitorHandler)
 
 	go RunMonitorChecks(db)
 
-	if err := r.Run(":8080"); err != nil {
+	if err := route.Run(":8080"); err != nil {
 		panic(err)
 	}
 }
