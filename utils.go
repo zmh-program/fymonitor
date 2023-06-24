@@ -24,7 +24,7 @@ func RunMonitorChecks(db *sql.DB) {
 }
 
 func checkMonitors(db *sql.DB) {
-	rows, err := db.Query("SELECT id, url, responses FROM monitor")
+	rows, err := db.Query("SELECT id, url, response FROM monitor")
 	if err != nil {
 		fmt.Println("Error fetching monitors:", err)
 		return
@@ -54,11 +54,11 @@ func checkMonitors(db *sql.DB) {
 
 			result, err := json.Marshal(res)
 			if err != nil {
-				fmt.Println("Error marshaling responses:", err)
+				fmt.Println("Error marshaling response:", err)
 				return
 			}
 
-			_, _ = db.Exec("UPDATE monitor SET responses = ? WHERE id = ?", result, id)
+			_, _ = db.Exec("UPDATE monitor SET response = ? WHERE id = ?", result, id)
 		}(id, url, data)
 	}
 

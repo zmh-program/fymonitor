@@ -16,7 +16,9 @@ func ConnectDatabase() *sql.DB {
 		CREATE TABLE IF NOT EXISTS monitor (
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			url VARCHAR(256) NOT NULL,
-			responses JSON,
+		    method VARCHAR(10) NOT NULL DEFAULT 'GET',
+		    headers JSON,
+			response JSON,
 			stamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)
 	`)

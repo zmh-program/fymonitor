@@ -9,8 +9,8 @@ import (
 )
 
 type MonitorData struct {
-	URL       string          `json:"url"`
-	Responses MonitorResponse `json:"responses"`
+	URL      string          `json:"url"`
+	Response MonitorResponse `json:"response"`
 }
 
 func GetMonitorHandler(c *gin.Context) {
@@ -18,7 +18,7 @@ func GetMonitorHandler(c *gin.Context) {
 
 	id := c.Param("id")
 
-	row := db.QueryRow("SELECT url, responses FROM monitor WHERE id = ?", id)
+	row := db.QueryRow("SELECT url, response FROM monitor WHERE id = ?", id)
 
 	var url string
 	var data string
@@ -35,7 +35,7 @@ func GetMonitorHandler(c *gin.Context) {
 		return
 	}
 
-	monitorData := MonitorData{URL: url, Responses: res}
+	monitorData := MonitorData{URL: url, Response: res}
 	c.JSON(http.StatusOK, monitorData)
 }
 
@@ -56,7 +56,7 @@ func AddMonitorHandler(ctx *gin.Context) {
 	}
 
 	// Insert new monitor record with empty response
-	result, err := db.Exec("INSERT INTO monitor (url, responses) VALUES (?, ?)", instance.URL, res)
+	result, err := db.Exec("INSERT INTO monitor (url, response) VALUES (?, ?)", instance.URL, res)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
