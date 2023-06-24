@@ -1,10 +1,8 @@
 package main
 
 import (
-	"database/sql"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/viper"
-	"log"
 )
 
 func main() {
@@ -16,16 +14,10 @@ func main() {
 	}
 
 	db := ConnectDatabase()
-	defer func(db *sql.DB) {
-		err := db.Close()
-		if err != nil {
-			log.Fatalln(err)
-		}
-	}(db)
+	defer db.Close()
 
 	route := gin.Default()
 
-	// Middleware to set up db connection
 	route.Use(func(ctx *gin.Context) {
 		ctx.Set("db", db)
 		ctx.Next()
