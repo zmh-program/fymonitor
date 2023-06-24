@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"net/http"
+	"fymonitor/utils"
 	"sync"
 	"time"
 )
@@ -50,7 +50,7 @@ func checkMonitors(db *sql.DB) {
 				res = make(MonitorResponse)
 			}
 
-			res[getCurrentTime()] = performCheck(url)
+			res[getCurrentTime()] = utils.PerformCheck(url, "GET", nil)
 
 			result, err := json.Marshal(res)
 			if err != nil {
@@ -63,23 +63,4 @@ func checkMonitors(db *sql.DB) {
 	}
 
 	group.Wait()
-}
-
-func performCheck(url string) int {
-	start := time.Now()
-
-	resp, err := http.Get(url)
-	if err != nil {
-		fmt.Println("Error performing check:", err)
-		return -1
-	}
-	defer resp.Body.Close()
-
-	duration := time.Since(start).Milliseconds()
-
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		return int(duration)
-	}
-
-	return -1
 }

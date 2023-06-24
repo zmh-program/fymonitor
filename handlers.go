@@ -9,8 +9,8 @@ import (
 )
 
 type MonitorData struct {
-	URL       string            `json:"url"`
-	Responses map[string]string `json:"responses"`
+	URL       string          `json:"url"`
+	Responses MonitorResponse `json:"responses"`
 }
 
 func GetMonitorHandler(c *gin.Context) {
