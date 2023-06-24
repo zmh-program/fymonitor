@@ -4,14 +4,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"io"
-	"log"
 	"net/http"
 	"sync"
 	"time"
 )
 
-type MonitorResponses map[string]string
+type MonitorResponse map[string]int
 
 func getCurrentTime() string {
 	currentTime := time.Now()
@@ -31,12 +29,7 @@ func checkMonitors(db *sql.DB) {
 		fmt.Println("Error fetching monitors:", err)
 		return
 	}
-	defer func(rows *sql.Rows) {
-		err := rows.Close()
-		if err != nil {
-			log.Fatal(err)
-		}
-	}(rows)
+	defer rows.Close()
 
 	var group sync.WaitGroup
 	for rows.Next() {
@@ -52,22 +45,19 @@ func checkMonitors(db *sql.DB) {
 		go func(id int, url string, data string) {
 			defer group.Done()
 
-			// Parse existing responses
-			var res MonitorResponses
+			var res MonitorResponse
 			if err := json.Unmarshal([]byte(data), &res); err != nil {
-				res = make(MonitorResponses)
+				res = make(MonitorResponse)
 			}
 
 			res[getCurrentTime()] = performCheck(url)
 
-			// Marshal responses to JSON string
 			result, err := json.Marshal(res)
 			if err != nil {
 				fmt.Println("Error marshaling responses:", err)
 				return
 			}
 
-			// Update monitor record with new responses
 			_, _ = db.Exec("UPDATE monitor SET responses = ? WHERE id = ?", result, id)
 		}(id, url, data)
 	}
@@ -75,26 +65,21 @@ func checkMonitors(db *sql.DB) {
 	group.Wait()
 }
 
-func performCheck(url string) string {
+func performCheck(url string) int {
 	start := time.Now()
 
 	resp, err := http.Get(url)
 	if err != nil {
 		fmt.Println("Error performing check:", err)
-		return "-1"
+		return -1
 	}
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-			log.Fatalln(err)
-		}
-	}(resp.Body)
+	defer resp.Body.Close()
 
 	duration := time.Since(start).Milliseconds()
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		return fmt.Sprintf("%dms", duration)
+		return int(duration)
 	}
 
-	return "-1"
+	return -1
 }

@@ -29,7 +29,7 @@ func GetMonitorHandler(c *gin.Context) {
 	}
 
 	// Parse response
-	var res MonitorResponses
+	var res MonitorResponse
 	if err := json.Unmarshal([]byte(data), &res); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -49,7 +49,7 @@ func AddMonitorHandler(ctx *gin.Context) {
 	}
 
 	// Marshal res to JSON string
-	res, err := json.Marshal(make(MonitorResponses))
+	res, err := json.Marshal(make(MonitorResponse))
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
